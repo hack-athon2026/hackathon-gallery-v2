@@ -267,9 +267,9 @@
       box-shadow: 0 1px 4px rgba(0,0,0,.08);
       display: flex; flex-direction: column;
     }
-    .card img { width: 100%; aspect-ratio: 16/9; object-fit: cover; background: #e9ebf0; }
+    .card img { width: 100%; aspect-ratio: 6/5; object-fit: cover; object-position: top; background: #e9ebf0; }
+    .card .thumb-ph { width: 100%; aspect-ratio: 6/5; background: #f1f2f7; display: flex; align-items: center; justify-content: center; font-size: 2rem; color: #b6bcc9; }
     .card .body { padding: 12px 12px 14px; flex: 1; display: flex; flex-direction: column; gap: 6px; }
-    .team { font-size: .8rem; font-weight: 700; color: #4f46e5; }
     .title { font-size: 1rem; font-weight: 700; }
     .desc { font-size: .9rem; color: #555; flex: 1; white-space: pre-line; }
     .view {
@@ -282,6 +282,11 @@
     .card.pending .desc { color: #9aa0ab; }
     .empty { text-align: center; color: #888; padding: 40px 0; grid-column: 1 / -1; }
     footer { text-align: center; color: #9aa0ab; font-size: .78rem; padding: 24px 0 32px; }
+
+    @media (max-width: 520px) {
+      /* 좁은 화면에서도 썸네일이 카드의 약 2/3를 차지하도록 세로를 더 줍니다 */
+      .card img, .card .thumb-ph { aspect-ratio: 9/16; }
+    }
 
     @media (prefers-reduced-motion: reduce) {
       .intro-title { animation: none; }
@@ -362,7 +367,7 @@
       { emoji: '💡', title: '해커톤이 뭐예요?',
         body: '해커톤은 정해진 시간 안에\n팀이 힘을 합쳐 아이디어를\n직접 만들어 보는 축제예요.\n\n코딩 대회가 아니라\n"만드는 즐거움"을 나누는 자리입니다.' },
       { emoji: '🛠️', title: '이렇게 진행돼요',
-        body: '1. 주제와 규칙을 함께 확인해요\n2. 모둠별로 만들 것을 정해요\n3. 상상하던 것을 직접 만들어요\n4. 완성품을 모두 앞에서 소개해요\n\n일시: 2026.10.24 토요일 09:00-17:00\n장소: 컴퓨터실' },
+        body: '1. 주제와 규칙을 함께 확인해요\n2. 모둠별로 만들 것을 정해요\n3. 상상하던 것을 직접 만들어요\n4. 완성품을 모두 앞에서 소개해요\n\n일시: 2026.10.24 토요일\n시간: 09:00-17:00\n장소: 컴퓨터실' },
       { emoji: '🚀', title: '여러분도 할 수 있어요',
         body: '못해도 괜찮아요.\n해커톤의 진짜 상은\n"내가 직접 만들었다"는 경험이에요.\n\n완성된 작품은 이 갤러리에 전시돼요.\n여러분의 첫 작품을 기대할게요!' }
     ];
@@ -584,6 +589,7 @@
     let typeTimer = null;
 
     function stopTypewriter() {
+      stopTypeSfx();
       if (typeTimer) { clearInterval(typeTimer); typeTimer = null; }
       document.querySelectorAll('#slidesTrack .typing').forEach(el =>
         el.classList.remove('typing'));
@@ -596,15 +602,39 @@
       el.dataset.full = text;
       el.textContent = '';
       let i = 0;
+      const delays = [];
       for (const ch of Array.from(text)) {
         if (ch === '\n') { el.appendChild(document.createTextNode('\n')); continue; }
         const s = document.createElement('span');
         s.className = 'ch';
         s.textContent = ch;
-        s.style.setProperty('--d', (baseDelay + i * step).toFixed(3) + 's');
+        const d = baseDelay + i * step;
+        s.style.setProperty('--d', d.toFixed(3) + 's');
+        if (ch.trim()) delays.push(d);
         el.appendChild(s);
         i++;
       }
+      return delays;
+    }
+
+    // 글자가 나타날 때마다 '다다다닥' 타자기 효과음을 냅니다.
+    // 실제 소리 재생은 음악 쪽(window.__typeTick)이 맡고,
+    // 🎵 버튼으로 끄면 효과음도 함께 꺼집니다.
+    let sfxTimers = [];
+    function stopTypeSfx() {
+      sfxTimers.forEach(clearTimeout);
+      sfxTimers = [];
+    }
+    function scheduleTypeSfx(delays) {
+      stopTypeSfx();
+      delays.forEach(function (d) {
+        sfxTimers.push(setTimeout(function () {
+          if (window.__typeTick) window.__typeTick();
+        }, d * 1000));
+      });
+    }
+    function typeTick() {
+      if (window.__typeTick) window.__typeTick();
     }
 
     // 슬라이드가 보일 때마다 효과를 처음부터 다시 재생
@@ -623,8 +653,10 @@
       if (slide.classList.contains('anim-fall') || slide.classList.contains('anim-pop')) {
         const h2 = slide.querySelector('h2');
         const p = slide.querySelector('p');
-        if (h2) splitChars(h2, 0.08, 0.05);
-        if (p) splitChars(p, 0.6, 0.015);
+        const delays = [];
+        if (h2) delays.push.apply(delays, splitChars(h2, 0.10, 0.075));
+        if (p) delays.push.apply(delays, splitChars(p, 0.7, 0.025));
+        scheduleTypeSfx(delays);
       }
       void slide.offsetWidth;  // 리플로우로 CSS 애니메이션 재시작
       slide.classList.add('play');
@@ -644,7 +676,9 @@
       queue[0].el.classList.add('typing');
       typeTimer = setInterval(() => {
         const t = queue[ti];
-        t.el.textContent += t.chars[ci++];
+        const ch = t.chars[ci++];
+        t.el.textContent += ch;
+        if (ch && ch.trim()) typeTick();
         if (ci >= t.chars.length) {
           t.el.classList.remove('typing');
           ti++; ci = 0;
@@ -653,7 +687,7 @@
           }
           queue[ti].el.classList.add('typing');
         }
-      }, 40);
+      }, 65);
     }
 
     document.getElementById('prevBtn').addEventListener('click', () => showSlide(slideIndex - 1));
@@ -760,8 +794,7 @@
     }
 
     // 시트의 i번째 줄이 i번 자리 카드입니다 (줄 순서 = 모둠 자리).
-    // 모둠 이름 칸을 바꾸면 갤러리에도 그대로 반영되고,
-    // 이름 칸이 비어 있으면 "n모둠"으로 표시합니다.
+    // 모둠 이름(1모둠, 2모둠...)은 카드에 표시하지 않습니다.
     // 링크가 아직 없는 자리는 "준비 중"으로 보입니다.
     function renderCards() {
       const g = document.getElementById('gallery');
@@ -770,11 +803,10 @@
       const html = [];
       for (let i = 0; i < n; i++) {
         const w = works[i];
-        const team = (w && w.team) ? w.team : (i + 1) + '모둠';
         if (!w || !w.link) {
           html.push('<article class="card pending">' +
+            '<div class="thumb-ph">&#9203;</div>' +
             '<div class="body">' +
-              '<div class="team">' + esc(team) + '</div>' +
               '<div class="title">준비 중</div>' +
               '<div class="desc">작품 링크가 등록되면 여기에 보입니다.</div>' +
             '</div>' +
@@ -784,7 +816,6 @@
         html.push('<article class="card">' +
           (thumbUrl(w.thumb) ? '<img src="' + esc(thumbUrl(w.thumb)) + '" alt="" loading="lazy" referrerpolicy="no-referrer">' : '') +
           '<div class="body">' +
-            '<div class="team">' + esc(team) + '</div>' +
             '<div class="title">' + esc(w.title || '작품') + '</div>' +
             '<div class="desc">' + esc(w.desc) + '</div>' +
             '<a class="view" href="' + esc(w.link) +
@@ -1107,6 +1138,44 @@
         }
       });
 
+      /* ---- 타자기 효과음: 아주 짧은 '똑' 소리 (직접 합성한 오리지널) ----
+         배경 음악과 같은 이유로 <audio> 요소를 씁니다
+         (Web Audio API는 아이폰 무음 스위치에 음소거되지만 <audio>는 들립니다).
+         🎵 버튼으로 음악을 끄면(🔇) 효과음도 나지 않습니다.
+         빠른 연타를 위해 같은 소리를 3개 요소가 번갈아 재생합니다. */
+      const sfxPool = [];
+      let sfxIdx = 0, sfxPlayed = 0, sfxErr = '';
+      (function initTypeSfx() {
+        try {
+          const SR = 22050, N = Math.floor(SR * 0.03);
+          const sam = new Float32Array(N);
+          for (let i = 0; i < N; i++) {
+            const t = i / SR;
+            const tone = Math.sin(2 * Math.PI * 2200 * t) * Math.exp(-t * 260);
+            const click = (Math.random() * 2 - 1) * Math.exp(-t * 900);
+            sam[i] = 0.45 * tone + 0.55 * click;
+          }
+          const uri = wavDataUri(sam, SR, 0.9);
+          for (let k = 0; k < 3; k++) {
+            const a = new Audio();
+            a.preload = 'auto';
+            a.src = uri;
+            a.volume = 0.22;   // 은은하게
+            sfxPool.push(a);
+          }
+        } catch (e) { sfxErr = String((e && e.message) || e); }
+      })();
+      window.__typeTick = function () {
+        if (muted || !sfxPool.length) return;
+        const a = sfxPool[sfxIdx++ % sfxPool.length];
+        try {
+          a.currentTime = 0;
+          const p = a.play();
+          if (p && p.catch) p.catch(function () {});
+          sfxPlayed++;
+        } catch (e) { sfxErr = String((e && e.message) || e); }
+      };
+
       // 검증용 상태 확인
       window.__bgm = {
         state: function () {
@@ -1117,7 +1186,8 @@
             elPaused: audioEl.paused, elTime: audioEl.currentTime,
             elVolume: audioEl.volume,
             renderRms: renderRms, renderPeak: renderPeak, renderErr: renderErr,
-            hintShown: musicHint.classList.contains('show')
+            hintShown: musicHint.classList.contains('show'),
+            sfxPool: sfxPool.length, sfxPlayed: sfxPlayed, sfxErr: sfxErr
           };
         }
       };
